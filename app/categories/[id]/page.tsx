@@ -1,19 +1,43 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { Suspense } from "react";
 
 import { deleteCategory } from "@/app/actions";
 import { getCategoryById, getCategoryPostsPage } from "@/lib/data";
 
+/**
+ * Category detail page.
+ *
+ * Data flow:
+ * - Parse `id` from route params.
+ * - Load category header via `getCategoryById()`.
+ * - Load paginated posts in this category via `getCategoryPostsPage()` using `searchParams`.
+ *
+ * Mutations:
+ * - Delete uses the `deleteCategory` Server Action and then redirects back to `/categories`.
+ *
+ * Cache Components / Suspense note:
+ * - `connection()` is request-time; async work is wrapped in Suspense.
+ */
 type SearchParams = { [key: string]: string | string[] | undefined };
 
+/**
+ * Formats a Date for table display (YYYY-MM-DD).
+ */
 function formatDate(value: Date) {
   return value.toISOString().slice(0, 10);
 }
 
+/**
+ * Normalizes a query param that could be `string | string[] | undefined` into a single string.
+ */
 function firstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+/**
+ * Parses an integer query param and clamps it to a safe range.
+ */
 function parseBoundedInt(value: string | undefined, fallback: number, min: number, max: number) {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
@@ -21,11 +45,34 @@ function parseBoundedInt(value: string | undefined, fallback: number, min: numbe
   return Math.min(max, Math.max(min, parsed));
 }
 
+/**
+ * Helper for building pagination links that keep page/pageSize in the URL.
+ */
 function buildHref(pathname: string, page: number, pageSize: number) {
   return `${pathname}?page=${page}&pageSize=${pageSize}`;
 }
 
-export default async function CategoryPage({
+/**
+ * Wrapper component providing a Suspense boundary for the async server component.
+ */
+export default function CategoryPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<SearchParams>;
+}) {
+  return (
+    <Suspense fallback={<div className="text-black/70 dark:text-white/70">Loading…</div>}>
+      <CategoryPageContent params={params} searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+/**
+ * Async server component that performs DB reads and renders the detail + posts table.
+ */
+async function CategoryPageContent({
   params,
   searchParams,
 }: {
@@ -61,7 +108,7 @@ export default async function CategoryPage({
     );
   }
 
-  const sp = await (searchParams ?? Promise.resolve({}));
+  const sp: SearchParams = searchParams ? await searchParams : {};
   const requestedPage = parseBoundedInt(firstParam(sp.page), 1, 1, 1_000_000);
   const pageSize = parseBoundedInt(firstParam(sp.pageSize), 10, 1, 50);
 

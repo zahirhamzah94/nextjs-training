@@ -1,5 +1,11 @@
 import Counter from "@/components/Counter";
 
+/**
+ * About page (Server Component).
+ *
+ * Purpose:
+ * - Minimal example showing that a Server Component page can render a Client Component (`<Counter/>`).
+ */
 export default function AboutPage() {
   return (
     <div>

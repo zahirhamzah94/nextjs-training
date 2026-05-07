@@ -1,7 +1,21 @@
 import { prisma } from "@/lib/db";
 
-export const dynamic = "force-dynamic";
-
+/**
+ * Convenience endpoint that returns a snapshot of multiple entities at once.
+ *
+ * Query params:
+ * - `limit` (default 100, max 1000): number of rows per entity to return.
+ *
+ * Response:
+ * - `{ users, categories, posts, auditLogs, meta: { limit } }`
+ *
+ * Notes:
+ * - Useful for demos, quick integration tests, or "one call loads everything" prototypes.
+ * - Not ideal for large datasets in production; prefer entity-specific endpoints with pagination.
+ */
+/**
+ * Parses an integer query param and clamps it to a safe range.
+ */
 function parseBoundedInt(value: string | null, fallback: number, min: number, max: number) {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
@@ -14,7 +28,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const limit = parseBoundedInt(url.searchParams.get("limit"), 100, 1, 1000);
 
-    const [users, categories, posts] = await Promise.all([
+    const [users, categories, posts, auditLogs] = await Promise.all([
       prisma.user.findMany({
         select: {
           id: true,
@@ -47,15 +61,31 @@ export async function GET(request: Request) {
         orderBy: { updatedAt: "desc" },
         take: limit,
       }),
+      prisma.auditLog.findMany({
+        select: {
+          id: true,
+          action: true,
+          entityType: true,
+          entityId: true,
+          actorUserId: true,
+          metadata: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+      }),
     ]);
 
-    return Response.json({ users, categories, posts, meta: { limit } });
+    return Response.json({ users, categories, posts, auditLogs, meta: { limit } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return Response.json({ error: message }, { status: 500 });
   }
 }
 
+/**
+ * Consistent 405 helper for unsupported methods.
+ */
 function methodNotAllowed(method: string) {
   return Response.json(
     { error: `Method ${method} not allowed` },

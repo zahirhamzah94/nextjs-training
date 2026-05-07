@@ -1,8 +1,21 @@
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 
-export const dynamic = "force-dynamic";
-
+/**
+ * Single Post Route Handler.
+ *
+ * Params:
+ * - `id` is taken from the dynamic route segment `/api/posts/:id` and parsed to an integer.
+ *
+ * Methods:
+ * - GET    → returns one post (404 if not found)
+ * - PUT    → full update (delegates to `updatePost()`)
+ * - PATCH  → partial update (delegates to `updatePost()`)
+ * - DELETE → deletes the post and writes an audit log row
+ *
+ * Flow for updates:
+ * - Validate JSON body with Zod → update row in Prisma → insert audit log entry (same transaction).
+ */
 const postUpdateSchema = z.object({
   title: z.string().min(1).optional(),
   content: z.string().optional(),
@@ -11,6 +24,10 @@ const postUpdateSchema = z.object({
   authorId: z.number().int().positive().optional(),
 });
 
+/**
+ * Parses the `id` route param into a number.
+ * Returns `NaN` when invalid so callers can use `Number.isFinite(...)`.
+ */
 function parseId(value: string) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : NaN;
@@ -57,6 +74,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   return updatePost(request, params);
 }
 
+/**
+ * Shared implementation for PUT/PATCH so both update paths stay consistent.
+ */
 async function updatePost(request: Request, params: Promise<{ id: string }>) {
   try {
     const { id } = await params;
@@ -71,10 +91,28 @@ async function updatePost(request: Request, params: Promise<{ id: string }>) {
       return Response.json({ error: "Invalid post data" }, { status: 400 });
     }
 
-    const data = await prisma.post.update({
-      where: { id: postId },
-      data: parsed.data,
-      select: { id: true },
+    const data = await prisma.$transaction(async (tx) => {
+      const updated = await tx.post.update({
+        where: { id: postId },
+        data: parsed.data,
+        select: { id: true, title: true, published: true, categoryId: true, authorId: true },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: "UPDATE",
+          entityType: "POST",
+          entityId: updated.id,
+          metadata: {
+            title: updated.title,
+            published: updated.published,
+            categoryId: updated.categoryId,
+            authorId: updated.authorId,
+          },
+        },
+      });
+
+      return { id: updated.id };
     });
 
     return Response.json({ data });
@@ -92,7 +130,13 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       return Response.json({ error: "Invalid post id" }, { status: 400 });
     }
 
-    await prisma.post.delete({ where: { id: postId } });
+    await prisma.$transaction(async (tx) => {
+      const post = await tx.post.findUnique({ where: { id: postId }, select: { id: true, title: true } });
+      await tx.post.delete({ where: { id: postId } });
+      await tx.auditLog.create({
+        data: { action: "DELETE", entityType: "POST", entityId: postId, metadata: post ? { title: post.title } : undefined },
+      });
+    });
     return Response.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

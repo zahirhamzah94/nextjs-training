@@ -1,11 +1,33 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { Suspense } from "react";
 
 import { updatePost } from "@/app/actions";
 import { getPostEditData } from "@/lib/data";
 import PostForm from "@/components/PostForm";
 
-export default async function EditPostPage({ params }: { params: Promise<{ id: string }> }) {
+/**
+ * Edit Post page.
+ *
+ * Data flow:
+ * - Parse `id` from route params.
+ * - Load `{ post, categories, users }` via `getPostEditData()` for form defaults and select options.
+ *
+ * Mutation:
+ * - Form submits to `updatePost` Server Action, which updates the row + audit log and redirects to `/posts/:id`.
+ */
+export default function EditPostPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<div className="text-black/70 dark:text-white/70">Loading…</div>}>
+      <EditPostPageContent params={params} />
+    </Suspense>
+  );
+}
+
+/**
+ * Async server component that performs DB reads and renders the form.
+ */
+async function EditPostPageContent({ params }: { params: Promise<{ id: string }> }) {
   await connection();
 
   const { id } = await params;

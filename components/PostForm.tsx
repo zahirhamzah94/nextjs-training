@@ -1,5 +1,21 @@
 import Link from "next/link";
 
+/**
+ * Post create/edit form used by the Posts pages.
+ *
+ * Inputs:
+ * - `categories` and `authors` provide the select options for relations.
+ * - `defaultValues` drives edit mode and initial form state.
+ * - `action` is a Server Action that receives the FormData.
+ *
+ * Flow:
+ * - User fills the form → submit → Server Action parses FormData and validates it.
+ * - Action writes with Prisma (and creates an audit log entry) → revalidates list/detail routes → redirects.
+ *
+ * Notes:
+ * - Selects default to the first option when creating, to keep `required` selects valid.
+ * - Hidden `id` is only present when editing.
+ */
 type SelectOption = { id: number; label: string };
 
 export default function PostForm({

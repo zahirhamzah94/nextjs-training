@@ -1,11 +1,17 @@
-import { connection } from "next/server";
-
 import { createUser } from "@/app/actions";
 import UserForm from "@/components/UserForm";
 
+/**
+ * New User page.
+ *
+ * Flow:
+ * - Render <UserForm/> with the `createUser` Server Action.
+ * - Action validates, creates user (+ optional profile bio), writes audit log, revalidates, then redirects.
+ *
+ * Note:
+ * - No DB reads are required to render this page.
+ */
 export default async function NewUserPage() {
-  await connection();
-
   return (
     <div className="space-y-6">
       <header className="space-y-1">

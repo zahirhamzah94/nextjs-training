@@ -1,14 +1,46 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { Suspense } from "react";
 
 import { deletePost } from "@/app/actions";
 import { getPostById } from "@/lib/data";
 
+/**
+ * Post detail page.
+ *
+ * Data flow:
+ * - Parse `id` from route params
+ * - Fetch the post via `getPostById()` (data layer)
+ * - Render a detail header + content area
+ *
+ * Mutations:
+ * - Delete uses the `deletePost` Server Action and then redirects back to `/posts`.
+ *
+ * Cache Components / Suspense note:
+ * - `connection()` is request-time; async work is wrapped in Suspense.
+ */
+/**
+ * Formats a DateTime for detail display (YYYY-MM-DD HH:mm).
+ */
 function formatDateTime(value: Date) {
   return value.toISOString().replace("T", " ").slice(0, 16);
 }
 
-export default async function PostPage({ params }: { params: Promise<{ id: string }> }) {
+/**
+ * Wrapper component providing a Suspense boundary for the async server component.
+ */
+export default function PostPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<div className="text-black/70 dark:text-white/70">Loading…</div>}>
+      <PostPageContent params={params} />
+    </Suspense>
+  );
+}
+
+/**
+ * Async server component that performs DB reads and renders the detail view.
+ */
+async function PostPageContent({ params }: { params: Promise<{ id: string }> }) {
   await connection();
 
   const { id } = await params;

@@ -1,5 +1,16 @@
 import Link from "next/link";
 
+/**
+ * Category create/edit form used by the Categories pages.
+ *
+ * Flow:
+ * - Renders a simple name input.
+ * - On submit, sends FormData to the provided Server Action (`action`).
+ * - The action validates, writes via Prisma, revalidates pages, then redirects.
+ *
+ * Notes:
+ * - When editing, includes a hidden `id` so the same component can serve create + update.
+ */
 export default function CategoryForm({
   action,
   submitLabel,

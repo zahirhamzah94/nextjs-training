@@ -1,8 +1,20 @@
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 
-export const dynamic = "force-dynamic";
-
+/**
+ * Categories collection Route Handler.
+ *
+ * GET:
+ * - Pagination via `page` and `pageSize`.
+ * - Returns `{ data, meta }` where each category includes a posts count (`_count.posts`).
+ *
+ * POST:
+ * - Accepts `{ name }` JSON (validated with Zod).
+ * - Creates category + audit log entry in a single transaction.
+ */
+/**
+ * Parses an integer query param and clamps it to a safe range.
+ */
 function parseBoundedInt(value: string | null, fallback: number, min: number, max: number) {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
@@ -49,9 +61,15 @@ export async function POST(request: Request) {
       return Response.json({ error: "Invalid category data" }, { status: 400 });
     }
 
-    const created = await prisma.category.create({
-      data: { name: parsed.data.name },
-      select: { id: true, name: true },
+    const created = await prisma.$transaction(async (tx) => {
+      const category = await tx.category.create({
+        data: { name: parsed.data.name },
+        select: { id: true, name: true },
+      });
+      await tx.auditLog.create({
+        data: { action: "CREATE", entityType: "CATEGORY", entityId: category.id, metadata: { name: category.name } },
+      });
+      return category;
     });
 
     return Response.json({ data: created }, { status: 201 });
@@ -61,6 +79,9 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * Consistent 405 helper for unsupported methods.
+ */
 function methodNotAllowed(method: string) {
   return Response.json(
     { error: `Method ${method} not allowed` },

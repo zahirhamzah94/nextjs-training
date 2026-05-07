@@ -17,13 +17,27 @@ enum Role {
   ADMIN
 }
 
+enum AuditEntityType {
+  USER
+  POST
+  CATEGORY
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
 model User {
   id        Int      @id @default(autoincrement())
   email     String   @unique
+  nric      String?  @unique
   name      String?
   role      Role     @default(USER)
   posts     Post[]
   profile   Profile?
+  auditLogs AuditLog[] @relation("AuditActor")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -52,4 +66,19 @@ model Category {
   id    Int    @id @default(autoincrement())
   name  String @unique
   posts Post[]
+}
+
+model AuditLog {
+  id          Int             @id @default(autoincrement())
+  action      AuditAction
+  entityType  AuditEntityType
+  entityId    Int
+  actorUserId Int?
+  actor       User?           @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  metadata    Json?
+  createdAt   DateTime        @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([actorUserId])
 }

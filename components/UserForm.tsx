@@ -1,5 +1,17 @@
 import Link from "next/link";
 
+/**
+ * User create/edit form used by the Users pages.
+ *
+ * Flow:
+ * - UI renders inputs with `defaultValues` (edit) or empty values (create).
+ * - On submit, Next.js sends a FormData POST to the provided `action` (a Server Action).
+ * - The action validates, writes to Prisma (often inside a transaction), then redirects.
+ *
+ * Notes:
+ * - When editing, a hidden `id` field is included so the Server Action knows which record to update.
+ * - `role` is normalized to a valid default to keep the select controlled by `defaultValue`.
+ */
 type Role = "USER" | "TRAINER" | "ADMIN";
 
 export default function UserForm({

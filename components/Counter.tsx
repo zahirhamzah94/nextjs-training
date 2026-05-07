@@ -1,7 +1,13 @@
-
 "use client";
 import { useState } from "react";
 
+/**
+ * Simple Client Component example.
+ *
+ * Purpose:
+ * - Demonstrate client-side interactivity (`useState`) inside the App Router.
+ * - Used by the About/Blog pages to show Server → Client composition.
+ */
 export default function Counter() {
   const [count, setCount] = useState(0);
 

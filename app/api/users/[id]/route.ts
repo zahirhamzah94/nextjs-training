@@ -1,8 +1,19 @@
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 
-export const dynamic = "force-dynamic";
-
+/**
+ * Single User Route Handler.
+ *
+ * Methods:
+ * - GET    → fetch user + profile bio
+ * - PUT    → update (delegates to `updateUser()`)
+ * - PATCH  → update (delegates to `updateUser()`)
+ * - DELETE → delete and write an audit log entry
+ *
+ * Profile update flow:
+ * - If `bio` is present: upsert profile row.
+ * - If `bio` is missing/empty: delete existing profile rows for the user.
+ */
 const userUpdateSchema = z.object({
   email: z.string().email().optional(),
   name: z.string().optional(),
@@ -10,6 +21,10 @@ const userUpdateSchema = z.object({
   bio: z.string().optional(),
 });
 
+/**
+ * Parses the `id` route param into a number.
+ * Returns `NaN` when invalid so callers can use `Number.isFinite(...)`.
+ */
 function parseId(value: string) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : NaN;
@@ -55,6 +70,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   return updateUser(request, params);
 }
 
+/**
+ * Shared implementation for PUT/PATCH so both update paths stay consistent.
+ */
 async function updateUser(request: Request, params: Promise<{ id: string }>) {
   try {
     const { id } = await params;
@@ -71,18 +89,26 @@ async function updateUser(request: Request, params: Promise<{ id: string }>) {
 
     const { bio, ...userData } = parsed.data;
 
-    const updated = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...userData,
-        profile: bio ? { upsert: { create: { bio }, update: { bio } } } : undefined,
-      },
-      select: { id: true },
-    });
+    const updated = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: {
+          ...userData,
+          profile: bio ? { upsert: { create: { bio }, update: { bio } } } : undefined,
+        },
+        select: { id: true, email: true, role: true },
+      });
 
-    if (!bio) {
-      await prisma.profile.deleteMany({ where: { userId } });
-    }
+      if (!bio) {
+        await tx.profile.deleteMany({ where: { userId } });
+      }
+
+      await tx.auditLog.create({
+        data: { action: "UPDATE", entityType: "USER", entityId: user.id, metadata: { email: user.email, role: user.role } },
+      });
+
+      return { id: user.id };
+    });
 
     return Response.json({ data: updated });
   } catch (error) {
@@ -99,7 +125,18 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       return Response.json({ error: "Invalid user id" }, { status: 400 });
     }
 
-    await prisma.user.delete({ where: { id: userId } });
+    await prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, email: true, role: true } });
+      await tx.user.delete({ where: { id: userId } });
+      await tx.auditLog.create({
+        data: {
+          action: "DELETE",
+          entityType: "USER",
+          entityId: userId,
+          metadata: user ? { email: user.email, role: user.role } : undefined,
+        },
+      });
+    });
     return Response.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

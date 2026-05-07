@@ -1,7 +1,20 @@
 import { prisma } from "@/lib/db";
 
-export const dynamic = "force-dynamic";
-
+/**
+ * Trainers listing endpoint (read-only).
+ *
+ * This is effectively a filtered Users list:
+ * - `where: { role: "TRAINER" }`
+ *
+ * Query params:
+ * - `page`, `pageSize` for pagination
+ *
+ * Response:
+ * - `{ data, meta }` for table rendering.
+ */
+/**
+ * Parses an integer query param and clamps it to a safe range.
+ */
 function parseBoundedInt(value: string | null, fallback: number, min: number, max: number) {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
@@ -41,6 +54,9 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * Consistent 405 helper for unsupported methods.
+ */
 function methodNotAllowed(method: string) {
   return Response.json(
     { error: `Method ${method} not allowed` },

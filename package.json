@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "seed": "prisma generate && tsx prisma/seed.ts",
-    "dev": "next dev",
+    "dev": "next dev -p 3005",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3005",
     "lint": "eslint"
   },
   "prisma": {

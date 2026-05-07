@@ -1,11 +1,33 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { Suspense } from "react";
 
 import { updateUser } from "@/app/actions";
 import { getUserById } from "@/lib/data";
 import UserForm from "@/components/UserForm";
 
-export default async function EditUserPage({ params }: { params: Promise<{ id: string }> }) {
+/**
+ * Edit User page.
+ *
+ * Data flow:
+ * - Parse `id` from route params and fetch the user (plus profile bio) via `getUserById()`.
+ * - Pass the loaded values into <UserForm/> as `defaultValues`.
+ *
+ * Mutation:
+ * - Form submits to `updateUser` Server Action, which updates user + profile, writes audit log, and redirects.
+ */
+export default function EditUserPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<div className="text-black/70 dark:text-white/70">Loading…</div>}>
+      <EditUserPageContent params={params} />
+    </Suspense>
+  );
+}
+
+/**
+ * Async server component that performs DB reads and renders the form.
+ */
+async function EditUserPageContent({ params }: { params: Promise<{ id: string }> }) {
   await connection();
 
   const { id } = await params;

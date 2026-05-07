@@ -1,11 +1,36 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { Suspense } from "react";
 
 import { createPost } from "@/app/actions";
 import { getPostNewData } from "@/lib/data";
 import PostForm from "@/components/PostForm";
 
-export default async function NewPostPage() {
+/**
+ * New Post page.
+ *
+ * Data flow:
+ * - Fetch category + user options via `getPostNewData()`.
+ * - Render <PostForm/> with those options.
+ *
+ * Guard:
+ * - If there are no categories or users, show links to create prerequisites first.
+ *
+ * Mutation:
+ * - Form submits to the `createPost` Server Action, which writes the row + audit log and redirects.
+ */
+export default function NewPostPage() {
+  return (
+    <Suspense fallback={<div className="text-black/70 dark:text-white/70">Loading…</div>}>
+      <NewPostPageContent />
+    </Suspense>
+  );
+}
+
+/**
+ * Async server component responsible for DB reads and rendering the form.
+ */
+async function NewPostPageContent() {
   await connection();
 
   const { categories, users } = await getPostNewData();

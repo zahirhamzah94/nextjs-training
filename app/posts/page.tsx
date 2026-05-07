@@ -1,19 +1,43 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { Suspense } from "react";
 
 import { deletePost } from "@/app/actions";
 import { getPostsPage } from "@/lib/data";
 
+/**
+ * Posts list page.
+ *
+ * Data flow:
+ * - Parse `page`/`pageSize` from `searchParams`
+ * - Fetch `{ data, meta }` via `getPostsPage()` (Prisma count + pagination)
+ * - Render table rows with links to details and a delete form
+ *
+ * Mutations:
+ * - Delete uses a Server Action (`deletePost`) via `<form action={deletePost}>`.
+ *
+ * Cache Components / Suspense note:
+ * - `connection()` is request-time; keep the async work inside a Suspense boundary.
+ */
 type SearchParams = { [key: string]: string | string[] | undefined };
 
+/**
+ * Formats a Date for table display (YYYY-MM-DD).
+ */
 function formatDate(value: Date) {
   return value.toISOString().slice(0, 10);
 }
 
+/**
+ * Normalizes a query param that could be `string | string[] | undefined` into a single string.
+ */
 function firstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+/**
+ * Parses an integer query param and clamps it to a safe range.
+ */
 function parseBoundedInt(value: string | undefined, fallback: number, min: number, max: number) {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
@@ -21,14 +45,31 @@ function parseBoundedInt(value: string | undefined, fallback: number, min: numbe
   return Math.min(max, Math.max(min, parsed));
 }
 
+/**
+ * Helper for building pagination links that keep page/pageSize in the URL.
+ */
 function buildHref(pathname: string, page: number, pageSize: number) {
   return `${pathname}?page=${page}&pageSize=${pageSize}`;
 }
 
-export default async function PostsPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
+/**
+ * Wrapper component providing a Suspense boundary for the async server component.
+ */
+export default function PostsPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
+  return (
+    <Suspense fallback={<div className="text-black/70 dark:text-white/70">Loading…</div>}>
+      <PostsPageContent searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+/**
+ * Async server component that performs DB reads and renders the table.
+ */
+async function PostsPageContent({ searchParams }: { searchParams?: Promise<SearchParams> }) {
   await connection();
 
-  const sp = await (searchParams ?? Promise.resolve({}));
+  const sp: SearchParams = searchParams ? await searchParams : {};
   const requestedPage = parseBoundedInt(firstParam(sp.page), 1, 1, 1_000_000);
   const pageSize = parseBoundedInt(firstParam(sp.pageSize), 10, 1, 50);
 

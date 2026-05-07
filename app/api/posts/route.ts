@@ -1,8 +1,26 @@
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 
-export const dynamic = "force-dynamic";
-
+/**
+ * Posts collection Route Handler.
+ *
+ * GET:
+ * - Supports pagination via `page` and `pageSize` query params.
+ * - Returns `{ data, meta }` where `data` includes joined Category + Author labels.
+ *
+ * POST:
+ * - Accepts JSON body validated by Zod.
+ * - Writes the post and an audit log entry inside a transaction.
+ * - Returns 201 with `{ data: { id } }`.
+ *
+ * Error handling:
+ * - 400 for validation failures
+ * - 500 for unexpected errors
+ */
+/**
+ * Parses an integer query param and clamps it to a safe range.
+ * Used for pagination inputs to prevent NaN and overly large values.
+ */
 function parseBoundedInt(value: string | null, fallback: number, min: number, max: number) {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
@@ -64,15 +82,33 @@ export async function POST(request: Request) {
       return Response.json({ error: "Invalid post data" }, { status: 400 });
     }
 
-    const created = await prisma.post.create({
-      data: {
-        title: parsed.data.title,
-        content: parsed.data.content,
-        published: parsed.data.published ?? false,
-        categoryId: parsed.data.categoryId,
-        authorId: parsed.data.authorId,
-      },
-      select: { id: true },
+    const created = await prisma.$transaction(async (tx) => {
+      const post = await tx.post.create({
+        data: {
+          title: parsed.data.title,
+          content: parsed.data.content,
+          published: parsed.data.published ?? false,
+          categoryId: parsed.data.categoryId,
+          authorId: parsed.data.authorId,
+        },
+        select: { id: true, title: true, published: true, categoryId: true, authorId: true },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          action: "CREATE",
+          entityType: "POST",
+          entityId: post.id,
+          metadata: {
+            title: post.title,
+            published: post.published,
+            categoryId: post.categoryId,
+            authorId: post.authorId,
+          },
+        },
+      });
+
+      return { id: post.id };
     });
 
     return Response.json({ data: created }, { status: 201 });
@@ -82,6 +118,10 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * Consistent 405 helper for unsupported methods.
+ * Including `Allow` makes the API self-describing for clients.
+ */
 function methodNotAllowed(method: string) {
   return Response.json(
     { error: `Method ${method} not allowed` },

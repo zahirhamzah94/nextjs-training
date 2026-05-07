@@ -1,7 +1,23 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 
-function createPrismaClient() {
+/**
+ * Prisma client singleton for the whole app.
+ *
+ * Responsibilities:
+ * - Builds a Prisma client configured with the MariaDB adapter (DATABASE_URL parsing).
+ * - Adds a query-timing hook via `$extends` for observability during development.
+ * - Ensures a single client instance is reused in dev (hot reload) to avoid exhausting DB connections.
+ *
+ * Flow:
+ * - `createPrismaClient()` reads DATABASE_URL → builds adapter → constructs PrismaClient → adds query timing.
+ * - `prisma` exports a cached singleton (`globalThis.prisma` in non-production) or a fresh client in production.
+ *
+ * Notes:
+ * - The `as PrismaClient` cast keeps TypeScript aware of model delegates (e.g., `auditLog`) including inside
+ *   `$transaction` callbacks, where the client type can otherwise lose delegate typings.
+ */
+function createPrismaClient(): PrismaClient {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
         throw new Error("DATABASE_URL is not set");
@@ -16,10 +32,12 @@ function createPrismaClient() {
         database: url.pathname ? decodeURIComponent(url.pathname.replace(/^\//, "")) : undefined,
     });
 
-    return new PrismaClient({
+    const client = new PrismaClient({
         adapter,
         log: ["query", "error", "warn"],
-    }).$extends({
+    });
+
+    const extended = client.$extends({
         query: {
             $allModels: {
                 async $allOperations({ model, operation, args, query }) {
@@ -32,9 +50,11 @@ function createPrismaClient() {
             },
         },
     });
+
+    return extended as PrismaClient;
 }
 
-const globalForPrisma = globalThis as unknown as { prisma: ReturnType<typeof createPrismaClient> | undefined; };
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 

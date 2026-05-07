@@ -1,8 +1,20 @@
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 
-export const dynamic = "force-dynamic";
-
+/**
+ * Users collection Route Handler.
+ *
+ * GET:
+ * - Pagination via `page` and `pageSize`.
+ * - Returns joined profile bio (if present) to show richer user data.
+ *
+ * POST:
+ * - Accepts JSON body validated with Zod.
+ * - Creates user (+ optional profile) and an audit log row in a single transaction.
+ */
+/**
+ * Parses an integer query param and clamps it to a safe range.
+ */
 function parseBoundedInt(value: string | null, fallback: number, min: number, max: number) {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
@@ -62,14 +74,22 @@ export async function POST(request: Request) {
       return Response.json({ error: "Invalid user data" }, { status: 400 });
     }
 
-    const created = await prisma.user.create({
-      data: {
-        email: parsed.data.email,
-        name: parsed.data.name,
-        role: parsed.data.role ?? "USER",
-        profile: parsed.data.bio ? { create: { bio: parsed.data.bio } } : undefined,
-      },
-      select: { id: true },
+    const created = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: parsed.data.email,
+          name: parsed.data.name,
+          role: parsed.data.role ?? "USER",
+          profile: parsed.data.bio ? { create: { bio: parsed.data.bio } } : undefined,
+        },
+        select: { id: true, email: true, role: true },
+      });
+
+      await tx.auditLog.create({
+        data: { action: "CREATE", entityType: "USER", entityId: user.id, metadata: { email: user.email, role: user.role } },
+      });
+
+      return { id: user.id };
     });
 
     return Response.json({ data: created }, { status: 201 });
@@ -79,6 +99,9 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * Consistent 405 helper for unsupported methods.
+ */
 function methodNotAllowed(method: string) {
   return Response.json(
     { error: `Method ${method} not allowed` },
